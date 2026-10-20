@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.cache/
+.data-stage/
+.data-backup/
+.DS_Store
+*.log

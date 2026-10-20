@@ -1,0 +1,73 @@
+name: Update DeFi data
+on:
+  schedule:
+    - cron: '15 0 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: defi-data-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+      result: ${{ steps.etl.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Fetch and publish validated data
+        id: etl
+        continue-on-error: true
+        run: python -m scripts.update_all
+      - name: Update market feeds and category growth
+        if: steps.etl.outcome == 'success'
+        run: python -m scripts.update_analytics
+      - name: Validate successful release
+        if: steps.etl.outcome == 'success'
+        run: python -m scripts.validate_data
+      - name: Commit data or failure status
+        id: commit
+        env:
+          ETL_RESULT: ${{ steps.etl.outcome }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [ "$ETL_RESULT" = 'success' ]; then
+            git add data
+          else
+            git add data/metadata/update-status.json
+          fi
+          if git diff --cached --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            git commit -m 'data: update DeFi daily snapshots and status'
+            git pull --rebase origin main
+            git push origin HEAD:main
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+  # GITHUB_TOKEN pushes do not trigger push workflows. Call deployment explicitly.
+  deploy:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
+  report:
+    needs: [update, deploy]
+    if: always() && needs.update.outputs.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'ETL failed; last successful release retained. See metadata/update-status.json.'
+          exit 1
