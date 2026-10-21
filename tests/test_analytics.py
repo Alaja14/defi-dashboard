@@ -93,3 +93,13 @@ def test_six_month_windows_use_180_days():
     assert market.window_metrics(points[-100:],'flow',180)['value'] is None
     from scripts.calculate_metrics import metrics
     assert metrics(points,points[-1]['date'],20)['change180d']==100
+
+
+def test_category_does_not_rank_survivors_when_current_member_is_missing(tmp_path):
+    write(tmp_path/'latest/summary.json',{'snapshotDate':'2026-01-08','updatedAt':'now'})
+    write(tmp_path/'latest/protocols.json',[{'chain':'ethereum','slug':'a','category':'Dexs','tvl':200,'historyPath':'history/a.json'}])
+    write(tmp_path/'history/a.json',[{'date':'2026-01-01','tvl':100}])
+    write(tmp_path/'metadata/unavailable-protocols.json',[{'chain':'ethereum','slug':'b','category':'Dexs'}])
+    period=build_categories(tmp_path)['rows'][0]['periods']['7']
+    assert period['change'] is None and period['baseline'] is None
+    assert period['covered']==1 and period['total']==2

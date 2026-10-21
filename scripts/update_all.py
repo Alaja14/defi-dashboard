@@ -29,6 +29,13 @@ def run(root=Path('data'), workers=4, refresh=False):
         backup.rename(root)
     api = API()
     errors, warnings = [], []
+    unavailable = {}
+    old_protocols = {(p["chain"],p["slug"]):p for p in read(root/"latest/protocols.json",[])}
+    old_missing = {(p["chain"],p["slug"]):p for p in read(root/"metadata/unavailable-protocols.json",[])}
+    def mark_unavailable(p,c,reason):
+        old = old_protocols.get((c,p),old_missing.get((c,p),{}))
+        unavailable[(c,p)] = {"slug":p,"chain":c,"category":old.get("category","Unknown"),"reason":reason}
+        warnings.append(f"Protocol unavailable: {p}/{c}; excluded from current totals; historical observations retained")
     try:
         chains, catalog = fetch_chains(api), fetch_protocols(api, include_excluded=True)
         old_chains = read(root/'latest/chains.json', [])
@@ -59,14 +66,17 @@ def run(root=Path('data'), workers=4, refresh=False):
             jobs[pool.submit(fetch_chain_history,api)] = ('global','global')
             for p, keys in tracked.items():
                 if p not in catalog:
-                    errors.append(f'Tracked protocol absent from current API: {p}')
+                    for c in keys: mark_unavailable(p,c,'protocol_absent')
                     continue
+                available_keys = []
                 for c in keys:
                     if c not in catalog[p]['chainTvls']:
-                        errors.append(f'Tracked chain-specific TVL missing: {p}/{c}')
+                        mark_unavailable(p,c,'chain_tvl_absent')
+                        continue
+                    available_keys.append(c)
                     protocol_histories[(c,p)] = read(root/f'history/protocols/{c}/{p}.json',[])
-                if any(needs(protocol_histories[(c,p)]) for c in keys):
-                    jobs[pool.submit(fetch_protocol_history,api,catalog[p]['apiSlug'],keys)] = ('protocol',p)
+                if any(needs(protocol_histories[(c,p)]) for c in available_keys):
+                    jobs[pool.submit(fetch_protocol_history,api,catalog[p]['apiSlug'],available_keys)] = ('protocol',p)
             done = 0
             for future in as_completed(jobs):
                 kind, key = jobs[future]
@@ -104,6 +114,7 @@ def run(root=Path('data'), workers=4, refresh=False):
         rows = []
         for p, keys in tracked.items():
             for c in keys:
+                if (c,p) in unavailable: continue
                 value = catalog[p]['chainTvls'][c]
                 points = merge_history(protocol_histories[(c,p)],[{'date':day,'tvl':value}])
                 path = f'history/protocols/{c}/{p}.json'
@@ -139,12 +150,13 @@ def run(root=Path('data'), workers=4, refresh=False):
         write(stage/'history/top10.json',combined)
         write(stage/'metadata/tracked.json',tracked)
         write(stage/f'snapshots/{day}.json',{'date':day,'sampledAt':now.isoformat(),'chains':chains,'protocols':rows})
+        write(stage/'metadata/unavailable-protocols.json',list(unavailable.values()))
         build_categories(stage)
         warnings.extend(validate(stage))
         if global_day < yesterday:
             warnings.append(f'全球 API 資料過期：最新日期 {global_day}')
         log.info('Validation warnings: %s',warnings)
-        write(stage/'metadata/update-status.json',{'status':'success','attemptedAt':now.isoformat(),'lastSuccess':now.isoformat(),'warnings':warnings,'errors':[]})
+        write(stage/'metadata/update-status.json',{'status':'success','attemptedAt':now.isoformat(),'lastSuccess':now.isoformat(),'warnings':warnings,'errors':[],'unavailableProtocols':list(unavailable.values())})
         if backup.exists(): shutil.rmtree(backup)
         if root.exists(): root.rename(backup)
         stage.rename(root)

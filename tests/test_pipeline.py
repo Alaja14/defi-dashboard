@@ -148,3 +148,30 @@ def test_publication_rename_failure_rolls_back(tmp_path,monkeypatch,fixture):
     assert not update_all.run()
     assert Path('data/latest/chains.json').read_bytes()==before
     assert read('data/metadata/update-status.json')['status']=='error'
+
+
+def test_missing_protocol_observation_does_not_block_release_and_recovers(tmp_path,monkeypatch,fixture):
+    monkeypatch.chdir(tmp_path)
+    today=datetime.now(timezone.utc).date()
+    points=[{'date':(today-timedelta(days=d)).isoformat(),'tvl':100} for d in (180,30,7,1)]
+    catalog=fetch_protocols(MockAPI(fixture['protocols']))
+    monkeypatch.setattr(update_all,'fetch_chains',lambda api:fetch_chains(MockAPI(fixture['chains'])))
+    monkeypatch.setattr(update_all,'fetch_protocols',lambda api,**kw:catalog)
+    monkeypatch.setattr(update_all,'fetch_chain_history',lambda *a:points)
+    monkeypatch.setattr(update_all,'fetch_protocol_history',lambda api,slug,chains:{c:points for c in chains})
+    assert update_all.run()
+    saved=Path('data/history/protocols/bsc/aave-v3.json').read_bytes()
+    value=catalog['aave-v3']['chainTvls'].pop('bsc')
+    assert update_all.run(refresh=True)
+    validate('data')
+    assert Path('data/history/protocols/bsc/aave-v3.json').read_bytes()==saved
+    assert not any(p['slug']=='aave-v3' and p['chain']=='bsc' for p in read('data/latest/protocols.json'))
+    assert read('data/metadata/unavailable-protocols.json')[0]['reason']=='chain_tvl_absent'
+    assert 'bsc' in read('data/metadata/tracked.json')['aave-v3']
+    catalog['aave-v3']['chainTvls']['bsc']=value
+    assert update_all.run()
+    assert read('data/metadata/unavailable-protocols.json')==[]
+    assert any(p['slug']=='aave-v3' and p['chain']=='bsc' for p in read('data/latest/protocols.json'))
+    catalog.pop('aave-v3')
+    assert update_all.run()
+    assert all(p['reason']=='protocol_absent' for p in read('data/metadata/unavailable-protocols.json'))

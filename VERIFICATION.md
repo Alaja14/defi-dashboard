@@ -43,3 +43,5 @@
 市場 JSON 含 Farside ETF 資料；核心 TVL、DEX、Stablecoins、RWA TVL 參考來自 DefiLlama。來源待接的 AUM 無虛構數值。
 
 時間選項更新：全站圖表統一為 1D／1W／1M／6M（1／7／30／180 天），新增 180 天流量與存量比較測試；以 /defi-dashboard/ 子路徑建置成功。
+
+2026-10-21 修復每日更新：缺少當期 Protocol TVL 時保留歷史與追蹤名單、排除當期合計，並顯示覆蓋警告；受影響分類不計成長率。42 項 Python 測試通過（含缺值、恢復、整個 Protocol 消失與分類成員缺失）。真實 core ETL 及四項免費市場來源更新成功，RWA AUM 維持待接；TypeScript 與 production build 通過。

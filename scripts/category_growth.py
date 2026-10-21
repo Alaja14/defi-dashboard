@@ -17,17 +17,19 @@ def build_categories(root):
     for p in read(root/'latest/protocols.json',[]):
         if p.get('eligible',True):
             groups[(p['chain'], 'Dexs' if p['category'] == 'Dexes' else p['category'])].append(p)
+    missing = read(root/"metadata/unavailable-protocols.json",[])
     rows = []
     for (chain, category), members in groups.items():
         maps = [{p['date']:p['tvl'] for p in read(root/m['historyPath'],[])} for m in members]
+        missing_count = sum(p['chain']==chain and ('Dexs' if p['category']=='Dexes' else p['category'])==category for p in missing)
         current = sum(p['tvl'] for p in members)
         periods = {}
         for days in (1,7,30,180):
             baseline_day = (today-timedelta(days=days)).isoformat()
             values = [m.get(baseline_day) for m in maps]
             coverage = sum(v is not None for v in values)
-            baseline = sum(values) if coverage == len(members) else None
-            periods[str(days)] = {'baselineDate':baseline_day,'baseline':baseline,'value':current,'change':change(current,baseline),'absolute':current-baseline if baseline is not None else None,'covered':coverage,'total':len(members)}
+            baseline = sum(values) if coverage == len(members) and not missing_count else None
+            periods[str(days)] = {'baselineDate':baseline_day,'baseline':baseline,'value':current,'change':change(current,baseline),'absolute':current-baseline if baseline is not None else None,'covered':coverage,'total':len(members)+missing_count}
         rows.append({'chain':chain,'chainName':chains.get(chain,chain),'category':category,'tvl':current,'count':len(members),'members':sorted(p['slug'] for p in members),'periods':periods})
     payload = {'asOf':summary['snapshotDate'],'updatedAt':summary['updatedAt'],'scope':'eligible-tracked-protocols-fixed-cohort','rows':rows}
     write(root/'latest/categories.json',payload)

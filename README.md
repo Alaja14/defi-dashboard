@@ -184,3 +184,5 @@ python -m scripts.validate_data
 ```
 
 The daily data workflow runs both steps. Market sources fail independently: a failed refresh preserves that feed's last successful history and marks it stale. RWA AUM stays unavailable until a real AUM adapter is provided. Market timestamps are separate from the core TVL snapshot. Generated market files live in `data/history/markets/` and `data/latest/markets.json`; category results live in `data/latest/categories.json`.
+
+Missing current protocol observations no longer abort the whole release. Their histories and tracking membership remain saved for recovery, but they are excluded from current totals. The site displays a coverage warning, and category growth is withheld for affected categories. Failures of requested historical APIs still preserve the previous full release. Changes to ETL scripts also trigger an immediate GitHub update run, in addition to the daily schedule.
