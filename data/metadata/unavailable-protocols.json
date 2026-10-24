@@ -1,1 +1,1 @@
-[{"slug":"altura","chain":"hyperliquid-l1","category":"Liquidity Manager","reason":"chain_tvl_absent"}]
+[{"slug":"ember-protocol","chain":"base","category":"Onchain Capital Allocator","reason":"protocol_absent"},{"slug":"altura","chain":"hyperliquid-l1","category":"Liquidity Manager","reason":"chain_tvl_absent"}]
